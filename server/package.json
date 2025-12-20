@@ -1,0 +1,30 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"node index.js\" \"node worker.js\""
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "^1.1.0",
+    "@langchain/core": "^1.1.6",
+    "@langchain/google-genai": "^2.1.2",
+    "@langchain/openai": "^1.2.0",
+    "@langchain/qdrant": "^1.0.1",
+    "@langchain/textsplitters": "^1.0.1",
+    "@qdrant/js-client-rest": "^1.16.2",
+    "bullmq": "^5.66.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "langchain": "^1.2.1",
+    "pdf-parse": "^1.1.4"
+  },
+  "devDependencies": {
+    "multer": "^2.0.2"
+  }
+}
