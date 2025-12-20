@@ -6,26 +6,42 @@ import { Queue } from 'bullmq';
 import { ChatOpenAI } from "@langchain/openai"; 
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
+import { QdrantClient } from '@qdrant/js-client-rest';
 
 const app = express();
-app.use(cors());
+
+// --- EDIT #1: PRODUCTION CORS ---
+// --- EDIT #1: PRODUCTION CORS ---
+app.use(cors({
+  origin: [
+    'http://localhost:3000', 
+    'https://docu-query-peach.vercel.app',
+    'https://docu-query-git-main-jagriti-dwivedis-projects.vercel.app',
+    'https://docu-query-as13pzr5u-jagriti-dwivedis-projects.vercel.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
 app.use(express.json());
 
-// 1. Setup Redis Queue with mandatory BullMQ fixes & Keep-Alives
+// --- EDIT #2: REDIS CONNECTION FIX ---
+// Added checks for external Redis (like Upstash or Aiven)
 const connection = {
   host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD,
-  tls: {}, 
+  // Use TLS for production Redis providers (Upstash requires this)
+  tls: process.env.REDIS_TLS === 'true' ? {} : undefined, 
   maxRetriesPerRequest: null,
   connectTimeout: 30000, 
   keepAlive: 10000,      
 };
 
 const fileQueue = new Queue('file-upload-queue', { connection });
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: '/tmp' }); // Use /tmp for serverless/container compatibility
 
-// 2. AI Initializations
+// AI Initializations
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "text-embedding-004",
   apiKey: process.env.GOOGLE_API_KEY,
@@ -39,12 +55,11 @@ const model = new ChatOpenAI({
 
 // --- ROUTES ---
 
-// Health Check
+// Health Check (Keeps Render awake)
 app.get('/ping', (req, res) => {
   return res.json({ status: "ok", message: "Express is alive!" });
 });
 
-// PDF Upload Route
 app.post('/upload/pdf', upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
@@ -61,14 +76,10 @@ app.post('/upload/pdf', upload.single('pdf'), async (req, res) => {
   }
 });
 
-// Chat / RAG Route
 app.get('/chat', async (req, res) => {
   try {
     const { message, fileName } = req.query; 
-    if (!message) return res.status(400).send("Missing query parameter: message");
-
-    console.log(`\n--- New Chat Request ---`);
-    console.log(`🔍 Query: "${message}" | File: ${fileName || 'Searching All'}`);
+    if (!message) return res.status(400).send("Missing message");
 
     const vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, {
       url: process.env.QDRANT_URL,
@@ -76,7 +87,6 @@ app.get('/chat', async (req, res) => {
       collectionName: 'pdfr-gemini',
     });
 
-    // Structure the filter for LangChain's Qdrant Retriever
     const retriever = vectorStore.asRetriever({
       k: 3,
       filter: fileName ? {
@@ -85,7 +95,6 @@ app.get('/chat', async (req, res) => {
     });
 
     const contextDocs = await retriever.invoke(message);
-    console.log(`📄 Found ${contextDocs.length} relevant chunks.`);
 
     if (contextDocs.length === 0) {
       return res.status(200).json({ 
@@ -94,47 +103,35 @@ app.get('/chat', async (req, res) => {
       });
     }
 
-    const fullPrompt = `Answer the question based ONLY on the context provided.
-    Context:
-    ${contextDocs.map(d => d.pageContent).join("\n\n")}
-
+    const fullPrompt = `Answer based ONLY on context:
+    Context: ${contextDocs.map(d => d.pageContent).join("\n\n")}
     Question: ${message}`;
 
-    console.log("🤖 Sending to Groq...");
     const aiResponse = await model.invoke(fullPrompt);
-    console.log("✅ Groq Responded!");
 
-    // DATA CLEANING: Ensure we only send pure text to avoid circular reference errors
     const safeAnswer = String(aiResponse.content);
     const safeSources = contextDocs.map(d => ({
       content: d.pageContent.substring(0, 300),
       page: d.metadata?.loc?.pageNumber || 1
     }));
 
-    const payload = JSON.stringify({ 
-      answer: safeAnswer, 
-      sources: safeSources 
-    });
-
-    console.log("📤 FORCING RESPONSE TO CLIENT...");
-    
-    // Explicitly set headers and use .send() for reliability
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(200).send(payload);
+    return res.status(200).json({ answer: safeAnswer, sources: safeSources });
 
   } catch (error) {
     console.error("Chat Error:", error);
     if (!res.headersSent) {
-      return res.status(500).json({ error: "Chat failed: " + error.message });
+      return res.status(500).json({ error: "Chat failed" });
     }
   }
 });
 
+// --- EDIT #3: BIND TO 0.0.0.0 ---
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => console.log(`🚀 Server running on PORT:${PORT}`));
-// Add this temporary script to create the index
-import { QdrantClient } from '@qdrant/js-client-rest';
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on PORT:${PORT}`);
+});
 
+// Payload Indexing (Qdrant Client)
 const client = new QdrantClient({
     url: process.env.QDRANT_URL,
     apiKey: process.env.QDRANT_API_KEY,
@@ -142,16 +139,12 @@ const client = new QdrantClient({
 
 async function createPayloadIndex() {
   try {
-    console.log("🛠️ Creating Payload Index for metadata.file_id...");
     await client.createPayloadIndex('pdfr-gemini', {
       field_name: 'metadata.file_id',
-      field_schema: 'keyword', // This tells Qdrant to treat it as a searchable string
+      field_schema: 'keyword',
     });
-    console.log("✅ Payload Index Created Successfully!");
   } catch (err) {
-    console.log("⚠️ Index might already exist or error occurred:", err.message);
+    console.log("Index status:", err.message);
   }
 }
-
-// Run it immediately on server start
 createPayloadIndex();
