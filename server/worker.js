@@ -3,36 +3,41 @@ import { Worker } from 'bullmq';
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { PDFLoader } from '@langchain/community/document_loaders/fs/pdf';
-// USE THIS INSTEAD
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { TaskType } from "@google/generative-ai";
+import fs from 'fs'; // Added to check if file exists
 
-// 1. Upstash Redis Connection
-// Replace your existing connection object with this:
 const connection = {
   host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD,
-  tls: {}, 
-  maxRetriesPerRequest: null, // Still mandatory for BullMQ
+  tls: {}, // Essential for Upstash
+  maxRetriesPerRequest: null,
   
-  // ADD THESE NEW SETTINGS:
-  connectTimeout: 30000, // 30 seconds
-  keepAlive: 10000,      // Send a pulse every 10 seconds
-  retryStrategy(times) {
-    const delay = Math.min(times * 50, 2000);
-    return delay;
+  // These settings prevent ECONNRESET
+  connectTimeout: 30000, 
+  keepAlive: 10000, 
+  reconnectOnError: (err) => {
+    const targetError = 'READONLY';
+    if (err.message.includes(targetError)) return true;
+    return false;
   },
 };
 
 const worker = new Worker(
   'file-upload-queue',
   async (job) => {
-    console.log(`Processing Job: ${job.id} for file: ${job.data.name}`);
-    
+    // 1. Parse Job Data
     const data = typeof job.data === 'string' ? JSON.parse(job.data) : job.data;
+    console.log(`🚀 Starting Job ${job.id}: Processing ${data.name}`);
 
-    // 2. Load and Split PDF
+    // 2. Safety Check: Does the file exist?
+    if (!fs.existsSync(data.path)) {
+      throw new Error(`File not found at path: ${data.path}. Ensure 'uploads/' folder exists.`);
+    }
+
+    // 3. Load and Split PDF
+    console.log("📄 Loading PDF...");
     const loader = new PDFLoader(data.path);
     const rawDocs = await loader.load();
 
@@ -43,31 +48,30 @@ const worker = new Worker(
     
     const docs = await splitter.splitDocuments(rawDocs);
 
-    // ✅ ADDING FILE_ID TO METADATA MANUALLY
-    // This ensures every chunk is tagged for your "Multitenancy" search
     const docsWithMetadata = docs.map(doc => {
-      doc.metadata.file_id = job.data.name; 
+      doc.metadata.file_id = data.name; 
       return doc;
     });
 
-    // 3. Initialize Gemini Embeddings
+    // 4. Initialize Gemini Embeddings
     const embeddings = new GoogleGenerativeAIEmbeddings({
       model: "text-embedding-004",
       taskType: TaskType.RETRIEVAL_DOCUMENT,
       apiKey: process.env.GOOGLE_API_KEY,
     });
-    
-    
-console.log("Connecting to Qdrant at:", process.env.QDRANT_URL);
 
-    // 4. Store in Qdrant Cloud
+    // 5. Store in Qdrant
+    console.log(`📡 Sending ${docs.length} chunks to Qdrant...`);
     await QdrantVectorStore.fromDocuments(docsWithMetadata, embeddings, {
       url: process.env.QDRANT_URL,
       apiKey: process.env.QDRANT_API_KEY,
       collectionName: 'pdfr-gemini',
     });
 
-    console.log(`✅ Success: ${docs.length} chunks added to Qdrant Cloud.`);
+    // 6. Cleanup local file (Optional - uncomment to save space)
+    // fs.unlinkSync(data.path); 
+
+    return { status: "success", chunks: docs.length };
   },
   {
     connection,
@@ -76,8 +80,18 @@ console.log("Connecting to Qdrant at:", process.env.QDRANT_URL);
   }
 );
 
+// --- NEW LISTENERS FOR DEBUGGING ---
+
+worker.on('completed', (job) => {
+  console.log(`✅ Job ${job.id} FINISHED. PDF is now searchable.`);
+});
+
 worker.on('failed', (job, err) => {
-  console.error(`❌ Job ${job?.id} failed: ${err.message}`);
+  console.error(`❌ Job ${job?.id} FAILED: ${err.message}`);
+});
+
+worker.on('error', err => {
+  console.error('🔥 Worker Error:', err);
 });
 
 console.log("🛠️ Worker is running and listening for jobs...");

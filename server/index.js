@@ -10,8 +10,6 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 
 const app = express();
 
-// --- EDIT #1: PRODUCTION CORS ---
-// --- EDIT #1: PRODUCTION CORS ---
 app.use(cors({
   origin: [
     'http://localhost:3000', 
@@ -25,21 +23,25 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// --- EDIT #2: REDIS CONNECTION FIX ---
-// Added checks for external Redis (like Upstash or Aiven)
 const connection = {
   host: process.env.REDIS_HOST,
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD,
-  // Use TLS for production Redis providers (Upstash requires this)
-  tls: process.env.REDIS_TLS === 'true' ? {} : undefined, 
+  tls: {}, // Essential for Upstash
   maxRetriesPerRequest: null,
+  
+  // These settings prevent ECONNRESET
   connectTimeout: 30000, 
-  keepAlive: 10000,      
+  keepAlive: 10000, 
+  reconnectOnError: (err) => {
+    const targetError = 'READONLY';
+    if (err.message.includes(targetError)) return true;
+    return false;
+  },
 };
 
 const fileQueue = new Queue('file-upload-queue', { connection });
-const upload = multer({ dest: '/tmp' }); // Use /tmp for serverless/container compatibility
+const upload = multer({ dest: '/tmp' }); 
 
 // AI Initializations
 const embeddings = new GoogleGenerativeAIEmbeddings({
@@ -55,23 +57,40 @@ const model = new ChatOpenAI({
 
 // --- ROUTES ---
 
-// Health Check (Keeps Render awake)
 app.get('/ping', (req, res) => {
   return res.json({ status: "ok", message: "Express is alive!" });
 });
 
+// UPDATED: Now returns jobId for polling
 app.post('/upload/pdf', upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "No file" });
     
-    await fileQueue.add('process-pdf', { 
+    const job = await fileQueue.add('process-pdf', { 
       path: req.file.path, 
       name: req.file.originalname 
     });
     
-    return res.status(200).json({ message: "File queued for processing!" });
+    // Send back the jobId so frontend can check status
+    return res.status(200).json({ 
+      message: "File queued!", 
+      jobId: job.id 
+    });
   } catch (err) {
     console.error("Upload Error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// NEW: Job Status route
+app.get('/job-status/:id', async (req, res) => {
+  try {
+    const job = await fileQueue.getJob(req.params.id);
+    if (!job) return res.status(404).json({ error: "Job not found" });
+
+    const state = await job.getState(); // waiting, active, completed, failed
+    return res.json({ id: job.id, state });
+  } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
@@ -108,7 +127,6 @@ app.get('/chat', async (req, res) => {
     Question: ${message}`;
 
     const aiResponse = await model.invoke(fullPrompt);
-
     const safeAnswer = String(aiResponse.content);
     const safeSources = contextDocs.map(d => ({
       content: d.pageContent.substring(0, 300),
@@ -125,13 +143,11 @@ app.get('/chat', async (req, res) => {
   }
 });
 
-// --- EDIT #3: BIND TO 0.0.0.0 ---
 const PORT = process.env.PORT || 8000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on PORT:${PORT}`);
 });
 
-// Payload Indexing (Qdrant Client)
 const client = new QdrantClient({
     url: process.env.QDRANT_URL,
     apiKey: process.env.QDRANT_API_KEY,
