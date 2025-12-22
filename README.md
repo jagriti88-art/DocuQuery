@@ -1,7 +1,3 @@
-A professional README.md is essential for explaining how your RAG (Retrieval-Augmented Generation) stack connects. Since you are using Next.js 15, Clerk, Gemini 1.5, FastAPI, and Qdrant, your documentation needs to cover both the frontend and backend setup.
-
-README.md
-Markdown
 
 # 🚀 DocuQuery AI
 
