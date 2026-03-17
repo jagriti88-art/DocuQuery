@@ -1,5 +1,8 @@
->
- Demo:> <img width="1920" height="1020" alt="localhost_3000 - Personal - Microsoft​ Edge 18-03-2026 02_59_09" src="https://github.com/user-attachments/assets/14316f77-49d6-4983-94a6-318688b3b00a" />
+snippets: <img width="1851" height="919" alt="Screenshot 2026-03-18 031916" src="https://github.com/user-attachments/assets/52b2a320-706e-42d1-a866-a2a11ccc61d6" />
+
+
+<img width="1390" height="919" alt="Screenshot 2026-03-18 031933" src="https://github.com/user-attachments/assets/991111ef-a3c4-42fe-a251-4c62c3ddfec3" />
+<img width="1861" height="911" alt="Screenshot 2026-03-18 032020" src="https://github.com/user-attachments/assets/48d8d931-4b9c-4a2e-b4c7-b59b50cdfb98" />
 
 # 🚀 DocuQuery AI
 
