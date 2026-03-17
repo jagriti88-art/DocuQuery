@@ -16,7 +16,7 @@ app.use(cors({
     'https://docu-query-peach.vercel.app',
     'https://docu-query-git-main-jagriti-dwivedis-projects.vercel.app',
     'https://docu-query-as13pzr5u-jagriti-dwivedis-projects.vercel.app',
-    'https://docu-query-zzxp.onrender.com'
+    'https://docuquery-ka53.onrender.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
