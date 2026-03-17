@@ -1,6 +1,9 @@
 Demo:
 
-Uploading freecompress-localhost_3000 and 3 more pages - Personal - Microsoft_ Edge 2026-03-18 03-20-49.mp4…
+
+
+https://github.com/user-attachments/assets/b3650337-ff49-4b07-a2ea-4698b6376091
+
 
 
 snippets: <img width="1851" height="919" alt="Screenshot 2026-03-18 031916" src="https://github.com/user-attachments/assets/52b2a320-706e-42d1-a866-a2a11ccc61d6" />
