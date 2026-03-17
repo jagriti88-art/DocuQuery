@@ -15,7 +15,7 @@ app.use(cors({
     'http://localhost:3000', 
     'https://docu-query-peach.vercel.app',
     'https://docu-query-git-main-jagriti-dwivedis-projects.vercel.app',
-    'https://docu-query-as13pzr5u-jagriti-dwivedis-projects.vercel.app'
+    'https://docu-query-as13pzr5u-jagriti-dwivedis-projects.vercel.app',
     'https://docu-query-zzxp.onrender.com'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -45,8 +45,9 @@ const fileQueue = new Queue('file-upload-queue', { connection });
 const upload = multer({ dest: '/tmp' }); 
 
 // AI Initializations
+// Change this in both server and worker files
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "text-embedding-004",
+  model: "gemini-embedding-001", // Updated model name
   apiKey: process.env.GOOGLE_API_KEY,
 });
 
