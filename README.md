@@ -1,3 +1,5 @@
+>
+ Demo:> <img width="1920" height="1020" alt="localhost_3000 - Personal - Microsoft​ Edge 18-03-2026 02_59_09" src="https://github.com/user-attachments/assets/14316f77-49d6-4983-94a6-318688b3b00a" />
 
 # 🚀 DocuQuery AI
 
